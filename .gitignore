@@ -1,0 +1,6 @@
+# ModelSim / QuestaSim compiler outputs & temporary files
+sim/work/
+sim/transcript
+sim/modelsim.ini
+sim/*.wlf
+sim/wlft*

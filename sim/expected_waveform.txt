@@ -1,0 +1,101 @@
+==============================================================================
+                    SPI TO AXI4-LITE BRIDGE WAVEFORM DESCRIPTION
+==============================================================================
+
+This document describes the expected waveform transitions when running 'run.do' 
+in ModelSim. Use this as a reference guide to verify the correctness of the 
+handshakes, states, and register updates in the simulation window.
+
+------------------------------------------------------------------------------
+1. SYSTEM RESET PHASE
+------------------------------------------------------------------------------
+* Time: 0 ns to 70 ns
+* Signals:
+  - 'rst_n' is initially '1', falls to '0' at 20ns, and rises to '1' at 70ns.
+  - Registers 'reg_control', 'reg_data0', and 'reg_data1' stay at 32'h00000000.
+  - 'reg_status' resets to 32'h00000001 (representing Ready/Active status).
+  - Bridge FSM 'state' remains at IDLE (value 0).
+
+------------------------------------------------------------------------------
+2. TEST CASE 2: SPI WRITE TO DATA0 (Addr 0x08, Data 8'hAA)
+------------------------------------------------------------------------------
+* Time: ~100 ns to ~3800 ns
+* SPI Phase:
+  - 'cs_n' transitions from '1' to '0' (starts transaction).
+  - 'sclk' begins toggling with a period of 100ns (SPI clock = 10 MHz).
+  - Byte 1: MOSI shifts in 8'h01 (CMD_WRITE) bit-by-bit (MSB first). 
+            FSM state is GET_CMD (1).
+  - Byte 2: MOSI shifts in 8'h08 (ADDR_DATA0).
+            FSM state is GET_ADDR (2).
+  - Byte 3: MOSI shifts in 8'hAA (DATA_IN).
+            FSM state is GET_DATA (3).
+  - After the 24th posedge of 'sclk', the byte is received and FSM transitions 
+    to AXI_WRITE (4).
+
+* AXI Handshake Phase:
+  - FSM asserts 'write_req' for 1 system clock cycle.
+  - AXI Master transitions from AXI_IDLE (0) to AXI_WRITE_STATE (1).
+  - 'm_axi_awaddr' drives 32'h00000008 and 'm_axi_wdata' drives 32'h000000AA.
+  - 'm_axi_awvalid' and 'm_axi_wvalid' go high.
+  - Register bank asserts 's_axi_awready' and 's_axi_wready'.
+  - Once accepted, AXI Master transitions to AXI_WRESP_STATE (2) and asserts 
+    'm_axi_bready'.
+  - Register bank asserts 's_axi_bvalid' to confirm successful write.
+  - 'reg_data0' immediately updates to 32'h000000AA in the AXI REGISTER BANK.
+  - AXI Master pulses 'write_done' and returns to IDLE.
+  - FSM transitions back to IDLE. 'cs_n' goes high.
+
+------------------------------------------------------------------------------
+3. TEST CASE 3: SPI READ FROM DATA0 (Addr 0x08, Data 8'hAA returned)
+------------------------------------------------------------------------------
+* Time: ~3900 ns to ~7600 ns
+* SPI Phase:
+  - 'cs_n' transitions from '1' to '0'.
+  - Byte 1: MOSI shifts in 8'h02 (CMD_READ). FSM state is GET_CMD (1).
+  - Byte 2: MOSI shifts in 8'h08 (ADDR_DATA0). FSM state is GET_ADDR (2).
+  - After the 16th posedge of 'sclk' (end of ADDR byte), FSM transitions 
+    to AXI_READ (5).
+
+* AXI Handshake Phase:
+  - FSM asserts 'read_req' for 1 cycle.
+  - AXI Master transitions from AXI_IDLE (0) to AXI_READ_ADDR_STATE (3).
+  - 'm_axi_araddr' drives 32'h00000008 and 'm_axi_arvalid' goes high.
+  - Register bank asserts 's_axi_arready'.
+  - AXI Master transitions to AXI_READ_DATA_STATE (4) and asserts 'm_axi_rready'.
+  - Register bank drives 'm_axi_rdata' with 32'h000000AA and asserts 'm_axi_rvalid'.
+  - AXI Master captures the data, pulses 'read_done', and returns to IDLE.
+  - FSM transitions to SEND_RESP (6).
+
+* SPI Response Phase:
+  - FSM asserts 'tx_load' on the next falling edge of 'sclk' (the 16th falling edge).
+  - The read value 8'hAA is loaded into 'tx_shift' of the SPI Slave.
+  - 'miso' immediately drives '1' (the MSB of 8'hAA).
+  - For the next 8 'sclk' cycles (Byte 3), MISO shifts out the remaining bits 
+    of 8'hAA on each falling edge of 'sclk'.
+  - Master samples 8'hAA on the rising edges of 'sclk'.
+  - 'cs_n' goes high, ending the transaction. MISO returns to high-impedance ('z').
+
+------------------------------------------------------------------------------
+4. TEST CASE 4: CONTROL WRITE (0x00 -> 0x55) & STATUS READ (0x04 -> 0x01)
+------------------------------------------------------------------------------
+* Time: ~7700 ns to ~15000 ns
+* First Transaction (Write):
+  - Same flow as Test Case 2, writing 8'h55 to address 8'h00.
+  - 'reg_control' updates to 32'h00000055.
+* Second Transaction (Read):
+  - Same flow as Test Case 3, reading address 8'h04.
+  - 'miso' shifts out 8'h01 (since 'reg_status' is 32'h00000001).
+
+------------------------------------------------------------------------------
+5. TEST CASE 5: INVALID COMMAND HANDLING (0xFF)
+------------------------------------------------------------------------------
+* Time: ~15100 ns to ~18000 ns
+* Flow:
+  - 'cs_n' goes low.
+  - Byte 1: MOSI shifts in 8'hFF (Invalid command). FSM state is GET_CMD (1).
+  - Byte 2: MOSI shifts in 8'h0C (ADDR_DATA1). FSM state is GET_ADDR (2).
+  - FSM captures command decoder's 'invalid_cmd' signal and transitions directly 
+    back to IDLE (0) without triggering any AXI transactions.
+  - 'reg_data1' remains at 32'h00000000 (unchanged).
+  - 'cs_n' goes high.
+==============================================================================
