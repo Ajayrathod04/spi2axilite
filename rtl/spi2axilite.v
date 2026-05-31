@@ -2,6 +2,7 @@
 // Module Name: spi2axilite
 // Description: Top-level module for the SPI to AXI4-Lite Bridge.
 //              Instantiates and connects all submodules.
+// Status: RTL Structure Finalized
 // ============================================================================
 module spi2axilite (
     input clk,          // Fast system clock
