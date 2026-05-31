@@ -1,67 +1,91 @@
-# FSM State Machine Diagram
+# Finite State Machine (FSM) Diagram
 
-This document details the Finite State Machine (FSM) implemented in `spi_fsm.v`. This state machine orchestrates the entire bridge behavior.
-
-## State Transition Diagram
-
-```mermaid
-stateDiagram-v2
-    [*] --> IDLE : rst_n == 0 / cs_n == 1
-    
-    IDLE --> GET_CMD : cs_n == 0
-    
-    GET_CMD --> GET_ADDR : byte_done
-    GET_CMD --> IDLE : cs_n == 1
-    
-    GET_ADDR --> GET_DATA : byte_done & Write Command (0x01)
-    GET_ADDR --> AXI_READ : byte_done & Read Command (0x02)
-    GET_ADDR --> IDLE : cs_n == 1 / Invalid Command
-    
-    GET_DATA --> AXI_WRITE : byte_done
-    GET_DATA --> IDLE : cs_n == 1
-    
-    AXI_WRITE --> IDLE : write_done / cs_n == 1
-    
-    AXI_READ --> SEND_RESP : read_done
-    AXI_READ --> IDLE : cs_n == 1
-    
-    SEND_RESP --> IDLE : cs_n == 1
-```
-
-## State Descriptions
-
-### 1. `IDLE` (3'd0)
-* **Description**: System is idle and waiting for active communication.
-* **Transition**: When `cs_n` is asserted (goes low), FSM clears registers and enters `GET_CMD`.
-
-### 2. `GET_CMD` (3'd1)
-* **Description**: Receives the first 8-bit byte containing the instruction command.
-* **Transition**: Waits for `done` from the SPI receiver. Once received, it stores the command and moves to `GET_ADDR`. If `cs_n` goes high, it resets to `IDLE`.
-
-### 3. `GET_ADDR` (3'd2)
-* **Description**: Receives the second 8-bit byte representing the register target address.
-* **Transition**: Once the byte is fully shifted in (`done` goes high), the address is stored. 
-  - If the command was `8'h01` (WRITE), it moves to `GET_DATA`.
-  - If the command was `8'h02` (READ), it moves to `AXI_READ`.
-  - If the command was invalid, it resets to `IDLE`.
-
-### 4. `GET_DATA` (3'd3)
-* **Description**: For Write transactions only. Receives the third 8-bit byte containing the data payload.
-* **Transition**: Once `done` goes high, the data is captured, and the FSM moves to `AXI_WRITE`.
-
-### 5. `AXI_WRITE` (3'd4)
-* **Description**: Triggers the AXI Master to execute an AXI4-Lite Write transaction to write the 8-bit data into the 32-bit register map.
-* **Transition**: Asserts `write_req` high and waits for `write_done`. Once completed, it returns to `IDLE`.
-
-### 6. `AXI_READ` (3'd5)
-* **Description**: Triggers the AXI Master to execute an AXI4-Lite Read transaction to pull data from the mapped address in the register bank.
-* **Transition**: Asserts `read_req` high and waits for `read_done`. Once completed, it captures the register contents and moves to `SEND_RESP`.
-
-### 7. `SEND_RESP` (3'd6)
-* **Description**: Transmits the captured register data back to the SPI Master.
-* **Transition**: Upon entering this state, the FSM triggers `tx_load` on the first falling edge of `sclk` to preload the transmit shifter of `spi_slave` with the read byte. It then stays in this state while MISO shifts out the data bit-by-bit until `cs_n` is deasserted (goes high), returning the FSM to `IDLE`.
+This document presents the detailed Finite State Machine (FSM) controller transitions implemented inside `spi_fsm.v`.
 
 ---
 
-## State Recovery
-At any point in any state, if `cs_n` goes high (active-low chip select is deasserted), the state machine synchronously resets back to `IDLE` within a single system clock cycle. This guarantees clean protocol recovery and prevents the FSM from locking up under unexpected host aborts.
+## 1. FSM State Transition Chart
+
+This state transition diagram uses high-contrast styling with thick borders, bold text, and clean paths to make the controller steps easy to trace.
+
+```mermaid
+stateDiagram-v2
+    %% Base styling
+    classDef default fill:#FFFFFF,stroke:#000000,stroke-width:4px,color:#000000,font-weight:bold,font-size:16px;
+
+    state "IDLE\n(Wait for CS_N low)" as IDLE
+    state "GET_CMD\n(Shift in command)" as GET_CMD
+    state "GET_ADDR\n(Shift in register index)" as GET_ADDR
+    state "GET_DATA\n(Shift in write payload)" as GET_DATA
+    state "AXI_WRITE\n(Run AXI write handshakes)" as AXI_WRITE
+    state "AXI_READ\n(Run AXI read handshakes)" as AXI_READ
+    state "SEND_RESP\n(Shift read byte to MISO)" as SEND_RESP
+
+    [*] --> IDLE : rst_n == 0
+    
+    IDLE --> GET_CMD : cs_n_active == 1
+    
+    GET_CMD --> GET_ADDR : done == 1
+    GET_CMD --> IDLE : cs_n_active == 0 (Abort)
+    
+    GET_ADDR --> GET_DATA : done == 1 & write_en == 1
+    GET_ADDR --> AXI_READ : done == 1 & read_en == 1
+    GET_ADDR --> IDLE : done == 1 & invalid_cmd == 1
+    GET_ADDR --> IDLE : cs_n_active == 0 (Abort)
+    
+    GET_DATA --> AXI_WRITE : done == 1
+    GET_DATA --> IDLE : cs_n_active == 0 (Abort)
+    
+    AXI_WRITE --> IDLE : write_done == 1
+    AXI_WRITE --> IDLE : cs_n_active == 0 (Abort)
+    
+    AXI_READ --> SEND_RESP : read_done == 1
+    AXI_READ --> IDLE : cs_n_active == 0 (Abort)
+    
+    SEND_RESP --> IDLE : cs_n_active == 0 (Done)
+
+    %% Node styling
+    style IDLE fill:#FFFFFF,stroke:#000000,stroke-width:4px,color:#000000;
+    style GET_CMD fill:#FFFFFF,stroke:#000000,stroke-width:4px,color:#000000;
+    style GET_ADDR fill:#FFFFFF,stroke:#000000,stroke-width:4px,color:#000000;
+    style GET_DATA fill:#FFFFFF,stroke:#000000,stroke-width:4px,color:#000000;
+    style AXI_WRITE fill:#FFFFFF,stroke:#000000,stroke-width:4px,color:#000000;
+    style AXI_READ fill:#FFFFFF,stroke:#000000,stroke-width:4px,color:#000000;
+    style SEND_RESP fill:#FFFFFF,stroke:#000000,stroke-width:4px,color:#000000;
+```
+
+---
+
+## 2. Detailed State Operational Rules
+
+### 1. `IDLE` (3'd0)
+* **Description:** The bridge core is waiting for a transaction.
+* **Transition:** When `cs_n` is pulled low (detected synchronously via double synchronizers as `cs_n_active == 1`), the FSM immediately transitions to `GET_CMD` to start capturing the first byte.
+
+### 2. `GET_CMD` (3'd1)
+* **Description:** The SPI slave is shifting in the first 8-bit command byte.
+* **Transition:** Once `done` pulses high (indicating 8 bits have been successfully sampled on `sclk` rising edges), the FSM captures `data_out` into the internal command register `cmd_reg` and transitions to `GET_ADDR`. If `cs_n` goes high, the cycle is aborted and the FSM immediately returns to `IDLE`.
+
+### 3. `GET_ADDR` (3'd2)
+* **Description:** The SPI slave is shifting in the second 8-bit byte containing the target register address.
+* **Transition:** Once `done` pulses high, the FSM captures `data_out` into `addr_reg` and immediately evaluates the command decoder flags:
+  * **Write Command (`8'h01`):** Decoded as `write_en == 1`, transitions to `GET_DATA`.
+  * **Read Command (`8'h02`):** Decoded as `read_en == 1`, transitions to `AXI_READ` (skipping get data).
+  * **Invalid Command:** Decoded as `invalid_cmd == 1`, transitions immediately back to `IDLE` without triggering any bus transactions.
+  * If `cs_n` goes high during this state, the FSM returns to `IDLE`.
+
+### 4. `GET_DATA` (3'd3)
+* **Description:** The SPI slave is shifting in the third 8-bit byte containing the write data payload.
+* **Transition:** Once `done` pulses high, the FSM captures `data_out` into `data_reg` and transitions to `AXI_WRITE`. If `cs_n` goes high, the FSM returns to `IDLE`.
+
+### 5. `AXI_WRITE` (3'd4)
+* **Description:** The FSM asserts `write_req` high to trigger the `axi_lite_master` to execute standard AMBA AXI4-Lite write transactions on the register space.
+* **Transition:** The FSM remains in this state until `write_done` pulses high from the AXI master, confirming that both address and data handshakes completed and the write response (`bvalid`/`bready`) was acknowledged. The FSM then returns to `IDLE`. If `cs_n` goes high, the FSM returns to `IDLE`.
+
+### 6. `AXI_READ` (3'd5)
+* **Description:** The FSM asserts `read_req` high to trigger the `axi_lite_master` to execute standard AMBA AXI4-Lite read transactions from the register space.
+* **Transition:** The FSM remains in this state until `read_done` pulses high from the AXI master, capturing the target register byte in `read_data_reg`. The FSM then transitions to `SEND_RESP`. If `cs_n` goes high, the FSM returns to `IDLE`.
+
+### 7. `SEND_RESP` (3'd6)
+* **Description:** The FSM asserts `tx_load` to load the captured read byte into the SPI slave shift register. The SPI slave shifts the byte out onto the `miso` line.
+* **Transition:** The FSM remains in this state as the host clocks out the response byte on MISO. The transaction officially terminates when the host deasserts chip select (`cs_n` goes high), resetting the FSM back to `IDLE`.

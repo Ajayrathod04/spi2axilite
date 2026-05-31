@@ -1,104 +1,60 @@
-# Hardware Architecture Block Diagram
+# Technical Block Architecture Diagram
 
-This document contains a presentation-ready, high-resolution visual mapping of the **SPI to AXI4-Lite Bridge** hardware architecture. It illustrates signal boundaries, module interfaces, and clock domains.
+This document presents the high-level structural block diagram of the synthesizable **SPI to AXI4-Lite Bridge** design.
 
 ---
 
 ## 1. System Block Diagram
 
+This diagram outlines the sequential hardware translation hierarchy, showing the data path from the external SPI Host (Testbench) to the internal register space.
+
 ```mermaid
-graph TB
-    %% Clock Domains and Clusters
-    subgraph Testbench [SPI MASTER SIDE — TESTBENCH]
-        MASTER[SPI Master Driver <br> <i>Testbench Module</i>]
-    end
-
-    subgraph Bridge [SPI TO AXI4-LITE BRIDGE — DUT BOUNDARY]
-        
-        %% Synchronizers
-        subgraph Sync [Asynchronous Input Synchronizers]
-            CS_SYNC[2-Stage CS_N Sync]
-            CLK_SYNC[2-Stage SCLK Sync]
-            MOSI_SYNC[2-Stage MOSI Sync]
-        end
-        
-        %% Submodules
-        SLAVE[spi_slave.v <br> <i>Physical Shifter</i>]
-        DECODER[spi_cmd_decoder.v <br> <i>Combinatorial Parser</i>]
-        FSM[spi_fsm.v <br> <i>Bridge Controller</i>]
-        AXI_MST[axi_lite_master.v <br> <i>Bus Master IP</i>]
-
-    end
-
-    subgraph Memory [AXI SLAVE BOUNDARY]
-        REG_BANK[axi_register_bank.v <br> <i>AXI Register Bank</i>]
-    end
-
-    %% External Interface Lines
-    MASTER == cs_n ==> CS_SYNC
-    MASTER == sclk ==> CLK_SYNC
-    MASTER == mosi ==> MOSI_SYNC
-    SLAVE == miso ==> MASTER
-
-    %% Synchronized Internals
-    CS_SYNC --> |cs_n_active| SLAVE
-    CS_SYNC --> |cs_n_active| FSM
-    CLK_SYNC --> |sclk_edges| SLAVE
-    CLK_SYNC --> |sclk_negedge| FSM
-    MOSI_SYNC --> |mosi_sync| SLAVE
-
-    %% Bridge Internal Data Paths
-    SLAVE -- 8-bit done / data_out --> FSM
-    FSM -- cmd_byte --> DECODER
-    DECODER -- write_en / read_en --> FSM
-    DECODER -- invalid_cmd --> FSM
-    FSM -- tx_data / tx_load --> SLAVE
-
-    %% FSM to AXI Master control
-    FSM == write_req / read_req ==> AXI_MST
-    FSM == write_addr / write_data ==> AXI_MST
-    FSM == read_addr ==> AXI_MST
-    AXI_MST -- write_done / read_done --> FSM
-    AXI_MST -- 32-bit read_data_out --> FSM
-
-    %% AXI4-Lite Internal Bus Channels
-    AXI_MST == awaddr / awvalid / wdata / wvalid / bready ==> REG_BANK
-    REG_BANK -- awready / wready / bvalid / bresp --> AXI_MST
+graph TD
+    %% Base styling for all nodes
+    classDef default fill:#FFFFFF,stroke:#000000,stroke-width:4px,color:#000000,font-weight:bold,font-size:18px;
     
-    AXI_MST == araddr / arvalid / rready ==> REG_BANK
-    REG_BANK -- arready / rdata / rvalid / rresp --> AXI_MST
+    SPI_TB["SPI MASTER (Testbench)<br>spi2axilite_tb"]
+    SPI_SL["SPI SLAVE<br>(spi_slave)"]
+    CMD_DEC["CMD DECODER<br>(spi_cmd_decoder)"]
+    FSM["SPI FSM<br>(spi_fsm)"]
+    AXI_MST["AXI4-Lite MASTER<br>(axi_lite_master)"]
+    REG_BANK["REGISTER BANK<br>(axi_register_bank)"]
 
-    %% Styling
-    style MASTER fill:#e8f0fe,stroke:#4285f4,stroke-width:2px;
-    style CS_SYNC fill:#f1f3f4,stroke:#dadce0,stroke-dasharray: 5, 5;
-    style CLK_SYNC fill:#f1f3f4,stroke:#dadce0,stroke-dasharray: 5, 5;
-    style MOSI_SYNC fill:#f1f3f4,stroke:#dadce0,stroke-dasharray: 5, 5;
-    style SLAVE fill:#e6f4ea,stroke:#34a853,stroke-width:2px;
-    style DECODER fill:#fef7e0,stroke:#fbbc05,stroke-width:2px;
-    style FSM fill:#e8f0fe,stroke:#1a73e8,stroke-width:2.5px;
-    style AXI_MST fill:#fce8e6,stroke:#ea4335,stroke-width:2px;
-    style REG_BANK fill:#f3e8fd,stroke:#ab47bc,stroke-width:2px;
-    
-    classDef domain fill:#ffffff,stroke:#5f6368,stroke-width:1px,stroke-dasharray: 3, 3;
-    class Testbench,Bridge,Memory domain;
+    SPI_TB ==> SPI_SL
+    SPI_SL ==> CMD_DEC
+    CMD_DEC ==> FSM
+    FSM ==> AXI_MST
+    AXI_MST ==> REG_BANK
+
+    %% Subgraph to group the SPI to AXI4-Lite Bridge Core
+    subgraph BRIDGE ["SPI to AXI4-Lite Bridge Core (spi2axilite)"]
+        SPI_SL
+        CMD_DEC
+        FSM
+        AXI_MST
+    end
+
+    %% Grouping styling
+    style BRIDGE fill:#F2F2F2,stroke:#000000,stroke-width:4px,stroke-dasharray: 5 5,color:#000000,font-weight:bold,font-size:18px;
 ```
 
 ---
 
-## 2. Key Architectural Dividers
+## 2. Hardware Submodules Overview
 
-### 🟢 SPI Slave (Physical Domain)
-- **Metastability Mitigation**: Contains double flip-flop synchronizers for incoming pins.
-- **Bit Shifter**: Dynamically counts clock cycles and aggregates 8-bit registers from `mosi`.
+The entire bridge design is implemented using a modular, clean Verilog architecture. Each block performs a dedicated, specialized hardware role:
 
-### 🟡 Command Decoder (Logic Domain)
-- **Zero-Latency parsing**: Evaluates commands combinatorially to determine Write (`8'h01`), Read (`8'h02`), or Error state instantly.
+### 1. `spi_slave`
+The physical interface receiver that samples the serial `mosi` line on the rising edge of `sclk`, shifts in bits, and outputs complete 8-bit parallel bytes. It also synchronizes incoming asynchronous control lines.
 
-### 🔵 FSM Controller (Orchestrator)
-- **Synchronous System Controller**: Handles clock boundaries and triggers sub-buses synchronously to `clk`.
+### 2. `spi_cmd_decoder`
+A combinatorial decoder block that parses the received command byte to detect write (`8'h01`), read (`8'h02`), or invalid operations, outputting immediate command flag indicators.
 
-### 🔴 AXI4-Lite Master (Bus Domain)
-- **Stateful Bus Generator**: Safely translates single-cycle FSM triggers into fully compliant 5-channel AXI handshake sequences.
+### 3. `spi_fsm`
+The sequential controller containing the 7-state finite state machine. It manages the byte-boundary transitions and coordinates when to trigger the internal AXI transaction.
 
-### 🟣 Register Bank (Storage Domain)
-- **Register Map**: Direct register-mapped address space (`CONTROL`, `STATUS`, `DATA0`, `DATA1`) returning active handshakes.
+### 4. `axi_lite_master`
+The parallel bus driver that initiates standard AXI4-Lite address and data write/read handshake sequences with the slave storage bank.
+
+### 5. `axi_register_bank`
+The standard register storage space mapped inside the SoC, holding the four primary registers (CONTROL, STATUS, DATA0, DATA1) and processing writes/reads over internal bus channels.

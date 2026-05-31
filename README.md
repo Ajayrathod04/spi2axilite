@@ -1,91 +1,137 @@
-# SPI to AXI4-Lite Bridge (Verilog HDL)
+# Synthesizable SPI to AXI4-Lite Protocol Bridge (Verilog HDL)
 
-This repository contains a modular, fully synthesizable, and simulation-verified **SPI to AXI4-Lite Bridge** designed in standard Verilog HDL. This project serves as a comprehensive submission for the **SETU by Zoho Electronics Project** evaluation.
-
----
-
-## Project Features
-
-- **Standard SPI Slave Interface**: Matches **SPI Mode 0** (CPOL=0, CPHA=0). Double-synchronizes inputs to mitigate metastability.
-- **AMBA AXI4-Lite compliance**: Features compliant address, data, and response handshake channels (`valid` and `ready` signals).
-- **Decoupled Modular Architecture**: Implemented using cleanly structured submodules rather than an overly complex monolithic design.
-- **Flexible 32-bit Register Map**: Supports CONTROL (`0x00`), STATUS (`0x04`), DATA0 (`0x08`), and DATA1 (`0x0C`) registers.
-- **ModelSim Ready**: Includes compilation and automated run scripts (`compile.do`, `run.do`) for quick waveform generation.
+This repository contains a modular, fully synthesizable, and simulation-verified **SPI to AXI4-Lite Protocol Bridge** implemented in standard Verilog HDL. This hardware design is engineered as a professional digital transceiver portfolio piece and serves as a formal evaluation submission for the Zoho Technical Engineering Board.
 
 ---
 
-## Directory Structure
+## 1. Project Overview
 
+In modern System-on-Chip (SoC) architectures, low-speed external controllers (like microcontrollers or sensors) frequently need to configure high-speed internal FPGA logic. The **SPI to AXI4-Lite Bridge** acts as a cycle-accurate hardware translator. It isolates the slow external serial SPI clock domain from the internal parallel high-speed AXI4-Lite interconnect, enabling synchronous, memory-mapped register reads and writes over standard AMBA channels.
+
+### Key Hardware Features
+* **SPI Mode 0 Support:** Decodes standard 4-wire SPI (`mosi`, `miso`, `sclk`, `cs_n`) operating with active-low chip select.
+* **Metastability Protection:** Input pins are double-synchronized to the fast system clock (`clk`) immediately at the input boundaries.
+* **Rigid 24-bit Packet Framing:** Transfers commands using a simple sequential protocol: `[8-bit Command] -> [8-bit Address] -> [8-bit Data]`.
+* **Standard AMBA AXI4-Lite Master:** Drives standard address, data, and response valid-ready handshakes.
+* **Decoupled Module Design:** Decouples serial shifting, combinatorial decoding, state machine routing, and bus handshakes for easier timing closure.
+* **Presentation Ready:** Pre-configured ModelSim scripts organize waveforms with visual dividers, hexadecimal radices, and ASCII state naming.
+
+---
+
+## 2. Architecture & Design Hierarchy
+
+The design is organized into cleanly partitioned submodules under the top-level wrapper `spi2axilite`.
+
+```mermaid
+graph TD
+    %% Base styling
+    classDef default fill:#FFFFFF,stroke:#000000,stroke-width:4px,color:#000000,font-weight:bold,font-size:16px;
+    
+    SPI_TB["SPI HOST (Testbench)<br>spi2axilite_tb"]
+    SPI_SL["SPI SLAVE<br>(spi_slave.v)"]
+    CMD_DEC["CMD DECODER<br>(spi_cmd_decoder.v)"]
+    FSM["SPI FSM<br>(spi_fsm.v)"]
+    AXI_MST["AXI4-Lite MASTER<br>(axi_lite_master.v)"]
+    REG_BANK["REGISTER BANK<br>(axi_register_bank.v)"]
+
+    SPI_TB ==> SPI_SL
+    SPI_SL ==> CMD_DEC
+    CMD_DEC ==> FSM
+    FSM ==> AXI_MST
+    AXI_MST ==> REG_BANK
+
+    subgraph BRIDGE ["SPI to AXI4-Lite Bridge Core (spi2axilite.v)"]
+        SPI_SL
+        CMD_DEC
+        FSM
+        AXI_MST
+    end
+
+    style BRIDGE fill:#F2F2F2,stroke:#000000,stroke-width:4px,stroke-dasharray: 5 5,color:#000000,font-weight:bold,font-size:16px;
 ```
-spi2axilite/
-├── rtl/                        # Synthesizable RTL Submodules
-│   ├── spi2axilite.v           # Top-level module
-│   ├── spi_slave.v             # SPI shift registers and synchronizers
-│   ├── spi_cmd_decoder.v       # Decodes write/read commands
-│   ├── spi_fsm.v               # Core controller FSM
-│   ├── axi_lite_master.v       # Compliant AXI4-Lite Master
-│   └── axi_register_bank.v     # AXI4-Lite Slave Register Map
-├── tb/                         # Simulation Testbench
-│   └── spi2axilite_tb.v        # Self-checking stimulus generator
-├── sim/                        # ModelSim Simulation Scripts
-│   ├── compile.do              # Clean & Compile design
-│   ├── run.do                  # Launch simulation & add waves
-│   └── expected_waveform.txt   # Simulation timing reference sheet
-├── docs/                       # Technical Documentation
-│   ├── block_diagram.md        # Mermaid architecture block diagram
-│   ├── fsm_diagram.md          # State machine diagram
-│   ├── protocol_notes.md       # Detailed SPI Mode 0 and AXI specs
-│   └── project_report.md       # Final technical evaluation report
-└── README.md                   # This overview file
-```
+
+### Submodule Descriptions
+1. **`spi_slave` (spi_slave.v):** The physical layer that synchronizes external wires and shifts serial data into 8-bit parallel bytes.
+2. **`spi_cmd_decoder` (spi_cmd_decoder.v):** Combinatorial decoder that validates write (`0x01`), read (`0x02`), and invalid opcodes.
+3. **`spi_fsm` (spi_fsm.v):** Sequential controller that sequences transitions across state boundaries:
+   `IDLE` $\rightarrow$ `GET_CMD` $\rightarrow$ `GET_ADDR` $\rightarrow$ `GET_DATA` $\rightarrow$ `AXI_WRITE` / `AXI_READ` $\rightarrow$ `SEND_RESP`.
+4. **`axi_lite_master` (axi_lite_master.v):** AXI master that translates control requests into compliant valid-ready bus channel handshakes.
+5. **`axi_register_bank` (axi_register_bank.v):** Standard 4-register memory-mapped slave bank that acts as the target FPGA storage.
 
 ---
 
-## SPI Command Protocol
+## 3. Memory-Mapped Register Map
 
-The bridge decodes **24-bit packets** driven under active-low chip select (`cs_n`):
+The internal register bank manages four 32-bit registers, mapped to the lower 8 bits of the write/read address bus:
 
-$$\text{Packet Format} = \text{[8-bit CMD]} \rightarrow \text{[8-bit ADDR]} \rightarrow \text{[8-bit DATA]}$$
-
-### 1. WRITE Command (`8'h01`)
-Writes the 8-bit DATA byte into the AXI address matching `ADDR`.
-- **Example**: `01 08 AA`
-- **Result**: Writes `8'hAA` into the lower byte of register `DATA0` (`address 32'h00000008`).
-
-### 2. READ Command (`8'h02`)
-Reads the contents of the AXI register matching `ADDR` and shifts it out on the `miso` line during the 3rd byte window.
-- **Example**: `02 08 00` (last byte is dummy from master)
-- **Result**: Reads `DATA0` register and drives `8'hAA` onto `miso`.
+| Register Name | Offset Address | Width | Access Type | Reset Value | Hardware Description |
+|:---:|:---:|:---:|:---:|:---:|---|
+| **CONTROL** | `32'h0000_0000` | 32-bit | Read/Write | `32'h0000_0000` | System configurations, enabling/disabling channels. |
+| **STATUS** | `32'h0000_0004` | 32-bit | Read-Only | `32'h0000_0001` | Returns `1` to indicate the bridge is fully active. |
+| **DATA0** | `32'h0000_0008` | 32-bit | Read/Write | `32'h0000_0000` | Data buffer 0 for user configuration payload. |
+| **DATA1** | `32'h0000_000C` | 32-bit | Read/Write | `32'h0000_0000` | Data buffer 1 for user configuration payload. |
 
 ---
 
-## Simulation Guide
+## 4. ModelSim Waveforms & Presentation Script
 
-This project is configured for **ModelSim**. Follow these steps to compile and run:
+This repository contains a dedicated waveform configuration script `sim/run_presentation.do` specifically designed to format waveforms for technical evaluations and reviews:
 
-1. Open **ModelSim**.
-2. Change the directory to the `sim/` folder:
+* **Visual Signal Dividers:** Separates signals cleanly into five groups (`SPI SIGNALS`, `FSM SIGNALS`, `AXI SIGNALS`, `REGISTER BANK`, and `DEBUG SIGNALS`).
+* **Hexadecimal Radix Alignment:** Displays all addresses and data payload values in clear hex (e.g. displaying register indices as `00`, `04`, `08`, `0C` rather than long binary strings).
+* **ASCII State Labels:** Translates numerical state values into clear ASCII text strings in the wave window (e.g. `GET_CMD`, `AXI_WRITE`) for instant debugging.
+
+### Expected Waveform Behavior (SPI Write to DATA0)
+1. **Serial Capture:** `cs_n` goes low. `mosi` shifts in command byte (`01`), address byte (`08`), and data byte (`AA`) on the rising edge of `sclk`.
+2. **State Transition:** The FSM transitions through `IDLE` $\rightarrow$ `GET_CMD` $\rightarrow$ `GET_ADDR` $\rightarrow$ `GET_DATA`.
+3. **Internal Bus Write:** The FSM enters `AXI_WRITE`, asserting `write_req` high. The AXI Master drives `awaddr` (`00000008`) and `wdata` (`000000AA`), executing simultaneous valid-ready handshakes.
+4. **Register Update:** Register `reg_data0` updates instantly to `32'h000000AA`.
+5. **CS_N Deassertion:** The host pulls `cs_n` high, instantly resetting the FSM back to `IDLE`.
+
+---
+
+## 5. Functional Verification Summary
+
+The self-checking testbench (`spi2axilite_tb.v`) has compiled and verified all operations with **0 Errors and 0 Warnings** inside ModelSim.
+
+### Verification Checklist & Audit Results
+- [x] **System Reset Verification:** Verifies that a reset pulse correctly clears all registers and presets `STATUS` to `1`.
+- [x] **SPI WRITE Operation:** Confirms successful serial reception of a write packet and correct routing to registers.
+- [x] **SPI READ Operation:** Confirms that reading back `DATA0` returns the expected byte (`0xAA`) onto the `miso` line.
+- [x] **AXI WRITE Channel Handshakes:** Verifies simultaneous and compliant `awvalid`/`awready` and `wvalid`/`wready` assertions.
+- [x] **AXI READ Channel Handshakes:** Verifies compliant `arvalid`/`arready` and `rvalid`/`rready` data-bus handshakes.
+- [x] **FSM Abort Recovery:** Confirms that pulling `cs_n` high in any middle state instantly aborts operations back to `IDLE` in 1 clock.
+- [x] **Invalid Opcode Handling:** Confirms that transmitting an unsupported command opcode (such as `0xFF`) is rejected, preventing invalid register updates.
+
+---
+
+## 6. How to Run Simulation
+
+### Option A: Presentation-Ready Waveforms (Recommended for Zoho Evaluation)
+To compile and launch the simulation with pre-configured hex-formatted waveforms and custom signal dividers:
+1. Open ModelSim.
+2. In the ModelSim command console, navigate to the `sim/` directory:
    ```tcl
    cd {/your/path/to/spi2axilite/spi2axilite/sim}
    ```
-3. Run the compiler:
+3. Run the presentation command:
    ```tcl
-   do compile.do
+   do compile.do; do run_presentation.do
    ```
-4. Run the simulation and open waveforms:
+
+### Option B: Standard Batch Run
+To run the simulation in standard command-line mode and output the testbench logs:
+1. Open the command terminal in the `sim/` folder.
+2. Run ModelSim in batch mode:
    ```tcl
-   do run.do
+   vsim -c -do "do compile.do; do run.do; quit"
    ```
 
 ---
 
-## Verification Waveform Overview
+## 7. Educational & Learning Outcomes
 
-When running the simulation, the wave viewer displays four organized signal groups:
-1. **SPI Interface**: Shows `cs_n` asserting, `sclk` toggling, and data shifting sequentially over `mosi` and `miso`.
-2. **Bridge Control FSM**: Visualizes transition through states:
-   - `IDLE` (0) $\rightarrow$ `GET_CMD` (1) $\rightarrow$ `GET_ADDR` (2) $\rightarrow$ `GET_DATA` (3) $\rightarrow$ `AXI_WRITE` (4) / `AXI_READ` (5) $\rightarrow$ `SEND_RESP` (6).
-3. **AXI4-Lite Master**: Tracks valid-ready handshake assertions on address, write, and read lines.
-4. **AXI Register Bank (Slave)**: Observes immediate parallel updates of `reg_control`, `reg_status`, `reg_data0`, and `reg_data1`.
-
-For a step-by-step description of signal timing transitions, refer to the [Expected Waveform Reference Sheet](file:///d:/program%20files/spi2axilite/spi2axilite/sim/expected_waveform.txt).
+Developing this project provided advanced insights into digital design best practices:
+1. **Clock Domain Crossing (CDC):** Synchronizing asynchronous serial clock domains (`sclk`) to fast system clock domains (`clk`) requires double flip-flop synchronizers to mitigate metastability risks.
+2. **State Machine Partitioning:** Decoupling the physical serial shifting (`spi_slave`) from the routing sequencer (`spi_fsm`) keeps the design clean, modular, and easy to modify.
+3. **AMBA AXI4-Lite Handshakes:** Designing valid-ready logic requires careful clock-boundary scheduling to ensure address and data lines latch simultaneously without transaction lockups or deadlocks.
