@@ -1,6 +1,6 @@
 # Technical Project Report
 
-**Project Title:** SPI to AXI4-Lite Bridge Design  
+**Project Title:** Write a HDL code for SPI(master) to AXI4-Lite  
 **Prepared By:**  
 Ajay Bhimrao Rathod  
 B.Tech Electronics Engineering  

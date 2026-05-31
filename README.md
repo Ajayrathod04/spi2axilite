@@ -1,12 +1,12 @@
-# SPI to AXI4-Lite Protocol Bridge (Verilog HDL)
+# Write a HDL code for SPI(master) to AXI4-Lite
 
-This repository contains a modular, fully synthesizable, and simulation-verified **SPI to AXI4-Lite Protocol Bridge** designed in Verilog HDL. This project translates serial SPI transactions into parallel AXI4-Lite register reads and writes, allowing an external master to communicate with internal FPGA registers.
+This repository contains a modular, fully synthesizable, and simulation-verified **Write a HDL code for SPI(master) to AXI4-Lite** bridge design in Verilog HDL. This project translates serial SPI transactions into parallel AXI4-Lite register reads and writes, allowing an external master to communicate with internal FPGA registers.
 
 ---
 
 ## 1. Project Overview
 
-The bridge operates as an SPI Slave on its external pins and an AXI4-Lite Master on its internal bus interface.
+The bridge operates as an SPI Master on its external pins and an AXI4-Lite its internal bus interface.
 * **SPI Protocol:** Compatible with SPI Mode 0 (CPOL=0, CPHA=0) using active-low Chip Select (`cs_n`).
 * **Synchronization:** Input lines are double-synchronized to the fast system clock (`clk`) immediately at the input boundaries to prevent metastability.
 * **24-bit Packet Framing:** Transactions are structured in 3 bytes: `[8-bit Command] -> [8-bit Address] -> [8-bit Data]`.
