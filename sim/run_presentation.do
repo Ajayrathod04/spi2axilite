@@ -3,6 +3,7 @@
 # File Name: run_presentation.do
 # Description: Starts simulation and prepares highly organized, presentation-ready
 #              waveforms with custom dividers and explicit hexadecimal radixes.
+# Status: Simulation Environment Ready
 # ============================================================================
 
 # 1. Initialize simulation on testbench
