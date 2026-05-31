@@ -1,6 +1,6 @@
 # Detailed Signal & Transaction Flow Diagram
 
-This document presents the detailed signal routing connections and operational transaction flows of the SPI to AXI4-Lite Bridge.
+This document presents the detailed signal routing connections and operational transaction flows for the **Write HDL Code for SPI(master) to AXI4-Lite** project.
 
 ---
 

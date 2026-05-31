@@ -1,6 +1,6 @@
 # Protocol Implementation Notes
 
-This document provides a technical reference on the **SPI** and **AXI4-Lite** protocols as implemented in the bridge for the **Write a HDL code for SPI(master) to AXI4-Lite** project, focusing on timing correctness, signal constraints, and structural behaviors.
+This document provides a technical reference on the **SPI** and **AXI4-Lite** protocols as implemented in the bridge for the **Write HDL Code for SPI(master) to AXI4-Lite** project, focusing on timing correctness, signal constraints, and structural behaviors.
 
 ---
 

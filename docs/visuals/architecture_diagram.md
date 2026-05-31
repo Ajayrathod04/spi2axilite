@@ -1,6 +1,6 @@
 # Architecture Block Diagram
 
-This document presents the high-level structural block diagram of the synthesizable **SPI to AXI4-Lite Bridge** design.
+This document presents the high-level structural block diagram of the synthesizable **Write HDL Code for SPI(master) to AXI4-Lite** design.
 
 ---
 

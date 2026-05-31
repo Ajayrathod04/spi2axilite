@@ -1,6 +1,6 @@
 # Architecture Block Diagram
 
-This document describes the structural block diagram of the design for the **Write a HDL code for SPI(master) to AXI4-Lite** project. It shows how the top-level module (`spi2axilite`) encapsulates and connects the modular submodules.
+This document describes the structural block diagram of the design for the **Write HDL Code for SPI(master) to AXI4-Lite** project. It shows how the top-level module (`spi2axilite`) encapsulates and connects the modular submodules.
 
 ## System Architecture
 

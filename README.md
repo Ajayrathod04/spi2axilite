@@ -1,23 +1,23 @@
-# Write a HDL code for SPI(master) to AXI4-Lite
+# Write HDL Code for SPI(master) to AXI4-Lite
 
-This repository contains a modular, fully synthesizable, and simulation-verified **Write a HDL code for SPI(master) to AXI4-Lite** bridge design in Verilog HDL. This project translates serial SPI transactions into parallel AXI4-Lite register reads and writes, allowing an external master to communicate with internal FPGA registers.
+This repository contains a modular, fully synthesizable, and simulation-verified **Write HDL Code for SPI(master) to AXI4-Lite** bridge design in Verilog HDL. This project translates serial SPI transactions into parallel AXI4-Lite register reads and writes, allowing an external master to communicate with internal FPGA registers.
 
 ---
 
 ## 1. Project Overview
 
-The bridge operates as an SPI Master on its external pins and an AXI4-Lite its internal bus interface.
+The bridge operates as an SPI Slave on its external pins and an AXI4-Lite Master on its internal bus interface.
 * **SPI Protocol:** Compatible with SPI Mode 0 (CPOL=0, CPHA=0) using active-low Chip Select (`cs_n`).
 * **Synchronization:** Input lines are double-synchronized to the fast system clock (`clk`) immediately at the input boundaries to prevent metastability.
 * **24-bit Packet Framing:** Transactions are structured in 3 bytes: `[8-bit Command] -> [8-bit Address] -> [8-bit Data]`.
 * **Standard AXI4-Lite Handshakes:** Drives compliant address, data, and response valid-ready signals.
 
-### 1.1 Project Interpretation and Architecture Choice
-The original requirement specifies creating an "SPI to AXI4-Lite" design. In a real-world SoC environment, this architecture is modeled as follows:
-* **External SPI Master:** An external host controller (such as a microcontroller) acts as the SPI Master, driving the SPI clock (`sclk`), chip select (`cs_n`), and serial data out (`mosi`).
-* **Bridge SPI Slave:** The bridge core physically implements an SPI Slave to receive the asynchronous serial stream without loading the FPGA's high-speed internal clock domain.
-* **Bridge AXI4-Lite Master:** The bridge internally translates the received serial commands into parallel bus operations, acting as an AXI4-Lite Master to read and write registers inside the FPGA fabric.
-This architecture choice provides robust, cycle-accurate protocol translation and guarantees that the bridge core can configure internal FPGA registers under full AMBA standard compliance.
+### 1.1 Project Interpretation
+To satisfy the "SPI(master) to AXI4-Lite" objective, the bridge is designed under the following system architecture choice:
+* **External SPI Master:** The project assumes that an external host controller (such as a microcontroller) acts as the SPI Master, generating all SPI bus transactions and driving `sclk`, `cs_n`, and `mosi`.
+* **Bridge SPI Slave (`spi_slave.v`):** The bridge physically implements an SPI Slave interface to receive and synchronize those incoming asynchronous transactions.
+* **Bridge AXI4-Lite Master:** The bridge internally converts the received SPI commands into parallel AXI4-Lite register write and read accesses on the internal FPGA bus fabric.
+This architecture complies exactly with the protocol roles, ensuring that transactions originating from an SPI Master are successfully translated into standard-compliant register operations inside the chip.
 
 ---
 
