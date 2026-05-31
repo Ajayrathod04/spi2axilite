@@ -14,6 +14,13 @@ SPI (Serial Peripheral Interface) is a commonly used serial communication protoc
 
 This project converts serial SPI transactions into parallel AXI4-Lite register accesses. The design acts as an SPI slave on the external pins and an AXI4-Lite master on the internal bus. This allows an external SPI master (like a microcontroller) to read and write internal registers on the AXI bus.
 
+### 1.1 Project Interpretation and Architecture Choice
+The original requirement specifies creating an "SPI to AXI4-Lite" design. In a real-world SoC environment, this architecture is modeled as follows:
+* **External SPI Master:** An external host controller (such as a microcontroller) acts as the SPI Master, driving the SPI clock (`sclk`), chip select (`cs_n`), and serial data out (`mosi`).
+* **Bridge SPI Slave:** The bridge core physically implements an SPI Slave to receive the asynchronous serial stream without loading the FPGA's high-speed internal clock domain.
+* **Bridge AXI4-Lite Master:** The bridge internally translates the received serial commands into parallel bus operations, acting as an AXI4-Lite Master to read and write registers inside the FPGA fabric.
+This architecture choice provides robust, cycle-accurate protocol translation and guarantees that the bridge core can configure internal FPGA registers under full AMBA standard compliance.
+
 ---
 
 ## 2. Block Architecture
