@@ -2,6 +2,7 @@
 // Module Name: spi2axilite_tb
 // Description: Comprehensive testbench for the SPI to AXI4-Lite Bridge.
 //              Tests Reset, SPI Write, SPI Read, and Invalid Command Handling.
+// Status: Testbench Verification Complete
 // ============================================================================
 `timescale 1ns / 1ps
 
