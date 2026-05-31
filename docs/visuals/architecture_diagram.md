@@ -1,4 +1,4 @@
-# Technical Block Architecture Diagram
+# Architecture Block Diagram
 
 This document presents the high-level structural block diagram of the synthesizable **SPI to AXI4-Lite Bridge** design.
 
@@ -10,32 +10,18 @@ This diagram outlines the sequential hardware translation hierarchy, showing the
 
 ```mermaid
 graph TD
-    %% Base styling for all nodes
-    classDef default fill:#FFFFFF,stroke:#000000,stroke-width:4px,color:#000000,font-weight:bold,font-size:18px;
-    
-    SPI_TB["SPI MASTER (Testbench)<br>spi2axilite_tb"]
-    SPI_SL["SPI SLAVE<br>(spi_slave)"]
-    CMD_DEC["CMD DECODER<br>(spi_cmd_decoder)"]
-    FSM["SPI FSM<br>(spi_fsm)"]
-    AXI_MST["AXI4-Lite MASTER<br>(axi_lite_master)"]
-    REG_BANK["REGISTER BANK<br>(axi_register_bank)"]
+    SPI_TB["<b>SPI MASTER (Testbench)</b> <br> (spi2axilite_tb)"]
+    SPI_SL["<b>spi_slave</b> <br> (SPI Shift & Sync Interface)"]
+    CMD_DEC["<b>spi_cmd_decoder</b> <br> (Combinatorial Command Decoder)"]
+    SPI_FSM["<b>spi_fsm</b> <br> (7-State Bridge Control FSM)"]
+    AXI_MST["<b>axi_lite_master</b> <br> (AXI4-Lite Master Interface)"]
+    REG_BANK["<b>axi_register_bank</b> <br> (AXI4-Lite Slave Registers)"]
 
     SPI_TB ==> SPI_SL
     SPI_SL ==> CMD_DEC
-    CMD_DEC ==> FSM
-    FSM ==> AXI_MST
+    CMD_DEC ==> SPI_FSM
+    SPI_FSM ==> AXI_MST
     AXI_MST ==> REG_BANK
-
-    %% Subgraph to group the SPI to AXI4-Lite Bridge Core
-    subgraph BRIDGE ["SPI to AXI4-Lite Bridge Core (spi2axilite)"]
-        SPI_SL
-        CMD_DEC
-        FSM
-        AXI_MST
-    end
-
-    %% Grouping styling
-    style BRIDGE fill:#F2F2F2,stroke:#000000,stroke-width:4px,stroke-dasharray: 5 5,color:#000000,font-weight:bold,font-size:18px;
 ```
 
 ---
